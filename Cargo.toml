@@ -302,8 +302,8 @@ objc2-app-kit = { version = "0.3", default-features = false, features = ["std", 
 raw-window-handle = "0.6"
 # Reads the locale's clock format.
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSDateFormatter", "NSFormatter", "NSLocale", "NSString"] }
-# The camera for video calls, through AVFoundation.
-nokhwa = { version = "0.10.11", default-features = false, features = ["input-avfoundation"] }
+# The camera for video calls, through Media Foundation and OpenCV (DirectShow fallback).
+nokhwa = { version = "0.10.11", default-features = false, features = ["input-msmf", "input-opencv"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-native-keyring-store = { version = "1.1", default-features = false }
