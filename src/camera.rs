@@ -646,7 +646,7 @@ mod backend {
     }
 }
 
-/// AVFoundation on macOS and Media Foundation on Windows, through nokhwa.
+/// AVFoundation on macOS and Media Foundation + OpenCV fallback on Windows, through nokhwa.
 #[cfg(not(target_os = "linux"))]
 mod backend {
     use super::{Mode, Pixel};
@@ -694,16 +694,21 @@ mod backend {
     }
 
     pub fn list() -> Vec<(String, String)> {
-        match nokhwa::query(ApiBackend::Auto) {
-            Ok(found) => found
-                .into_iter()
-                .map(|info| (info.index().to_string(), info.human_name()))
-                .collect(),
-            Err(error) => {
-                log::warn!("[CALL] the cameras could not be listed: {error}");
-                Vec::new()
+        let mut results = Vec::new();
+        if let Ok(found) = nokhwa::query(ApiBackend::Auto) {
+            for info in found {
+                results.push((info.index().to_string(), info.human_name()));
             }
         }
+        #[cfg(target_os = "windows")]
+        if results.is_empty() {
+            if let Ok(found) = nokhwa::query(ApiBackend::OpenCv) {
+                for info in found {
+                    results.push((format!("opencv:{}", info.index()), info.human_name()));
+                }
+            }
+        }
+        results
     }
 
     /// Asks macOS for the camera, once, and waits for the answer.
@@ -739,38 +744,55 @@ mod backend {
     impl Camera {
         pub fn open(id: &str, budget: (usize, usize), fps: u32) -> Result<Self, String> {
             authorize()?;
-            // The id is what `list` wrote: a number for an index, else the
-            // platform's own identifier.
-            let index = match id.parse::<u32>() {
+            let (use_opencv, clean_id) = match id.strip_prefix("opencv:") {
+                Some(rest) => (true, rest),
+                None => (false, id),
+            };
+            let index = match clean_id.parse::<u32>() {
                 Ok(number) => CameraIndex::Index(number),
-                Err(_) => CameraIndex::String(id.to_owned()),
+                Err(_) => CameraIndex::String(clean_id.to_owned()),
             };
             let any = RequestedFormat::with_formats(RequestedFormatType::None, &READABLE);
-            let mut camera = nokhwa::Camera::new(index, any)
-                .map_err(|error| format!("the camera could not be opened: {error}"))?;
-            let modes: Vec<Mode> = camera
-                .compatible_camera_formats()
-                .map_err(|error| format!("the camera's formats could not be read: {error}"))?
-                .into_iter()
-                .map(|format| Mode {
-                    width: format.resolution().width(),
-                    height: format.resolution().height(),
-                    fps: format.frame_rate(),
-                    pixel: pixel(format.format()),
-                })
-                .collect();
-            if let Some(chosen) = super::choose_mode(&modes, budget, fps) {
-                let format = CameraFormat::new(
-                    Resolution::new(chosen.width, chosen.height),
-                    *frame_format(chosen.pixel),
-                    chosen.fps,
-                );
-                let exact = RequestedFormat::with_formats(
-                    RequestedFormatType::Exact(format),
-                    std::slice::from_ref(frame_format(chosen.pixel)),
-                );
-                if let Err(error) = camera.set_camera_requset(exact) {
-                    log::warn!("[CALL] the camera kept its own format: {error}");
+
+            #[cfg(target_os = "windows")]
+            let mut camera = if use_opencv {
+                nokhwa::Camera::with_backend(index, any, ApiBackend::OpenCv)
+                    .map_err(|error| format!("the camera could not be opened: {error}"))?
+            } else {
+                nokhwa::Camera::new(index, any)
+                    .map_err(|error| format!("the camera could not be opened: {error}"))?
+            };
+
+            #[cfg(not(target_os = "windows"))]
+            let mut camera = {
+                let _ = use_opencv;
+                nokhwa::Camera::new(index, any)
+                    .map_err(|error| format!("the camera could not be opened: {error}"))?
+            };
+
+            if let Ok(raw_modes) = camera.compatible_camera_formats() {
+                let modes: Vec<Mode> = raw_modes
+                    .into_iter()
+                    .map(|format| Mode {
+                        width: format.resolution().width(),
+                        height: format.resolution().height(),
+                        fps: format.frame_rate(),
+                        pixel: pixel(format.format()),
+                    })
+                    .collect();
+                if let Some(chosen) = super::choose_mode(&modes, budget, fps) {
+                    let format = CameraFormat::new(
+                        Resolution::new(chosen.width, chosen.height),
+                        *frame_format(chosen.pixel),
+                        chosen.fps,
+                    );
+                    let exact = RequestedFormat::with_formats(
+                        RequestedFormatType::Exact(format),
+                        std::slice::from_ref(frame_format(chosen.pixel)),
+                    );
+                    if let Err(error) = camera.set_camera_requset(exact) {
+                        log::warn!("[CALL] the camera kept its own format: {error}");
+                    }
                 }
             }
             camera
