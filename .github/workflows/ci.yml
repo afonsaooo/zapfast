@@ -29,7 +29,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Install OpenCV and LLVM
         shell: pwsh
@@ -37,14 +37,14 @@ jobs:
           choco install opencv llvm -y
           $opencvDir = (Get-ChildItem "C:\tools\opencv\build" -Directory | Select-Object -First 1).FullName
           if (-not $opencvDir) { $opencvDir = "C:\tools\opencv\build" }
-          echo "OPENCV_LINK_PATHS=$opencvDir\x64\vc16\lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          echo "OPENCV_LINK_LIBS=opencv_world4100" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          echo "OPENCV_INCLUDE_PATHS=$opencvDir\include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "OPENCV_LINK_PATHS=$opencvDir\x64\vc16\lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "OPENCV_LINK_LIBS=opencv_world4100" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "OPENCV_INCLUDE_PATHS=$opencvDir\include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           $libFile = Get-ChildItem "$opencvDir\x64" -Recurse -Filter "opencv_world*.lib" | Select-Object -First 1
           if ($libFile) {
-            echo "OPENCV_LINK_PATHS=$($libFile.DirectoryName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-            echo "OPENCV_LINK_LIBS=$($libFile.BaseName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "OPENCV_LINK_PATHS=$($libFile.DirectoryName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "OPENCV_LINK_LIBS=$($libFile.BaseName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           }
           $dllFile = Get-ChildItem "$opencvDir\x64" -Recurse -Filter "opencv_world*.dll" | Select-Object -First 1
           if ($dllFile) {
@@ -61,9 +61,7 @@ jobs:
             Copy-Item "opencv_world*.dll" -Destination "dist\"
           }
       - name: Upload zapfast.exe
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: zapfast-windows-obs
-          path: dist/*
-ci_yml.txt
-A apresentar ci_yml.txt.
+          path: 'dist/*'
